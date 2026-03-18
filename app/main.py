@@ -3,10 +3,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import chat
 from app.config import settings
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时初始化 Milvus 集合
+    from app.api.chat import ltm
+    try:
+        await ltm.init_collections()
+    except Exception as e:
+        print(f"Failed to initialize Milvus: {e}")
+    yield
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="通信运营商多智能体客服系统",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 # CORS 配置

@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "secret"
 
+    # Business System Settings
+    BUSINESS_API_URL: str = "http://localhost:8001"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()
