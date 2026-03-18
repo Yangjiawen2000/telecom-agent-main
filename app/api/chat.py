@@ -16,7 +16,6 @@ from app.config import settings
 
 import redis.asyncio as redis
 from upstash_redis.asyncio import Redis as UpstashRedis
-from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -69,10 +68,14 @@ async def event_generator(request: ChatRequest, background_tasks: BackgroundTask
         # 1. 发送思考状态
         yield f"data: {json.dumps({'type': 'thinking', 'content': '正在加载上下文与识别意图...'}, ensure_ascii=False)}\n\n"
 
-        # 2. 获取上下文
+        # 2. 并行获取上下文 (从 Redis 和 Milvus 同时读取)
         stm = ShortTermMemory(session_id, redis_client)
-        history = await stm.get_history()
-        user_profile = await ltm.get_user_context(user_id)
+        
+        # 并行执行数据获取
+        history_task = stm.get_history()
+        profile_task = ltm.get_user_context(user_id)
+        
+        history, user_profile = await asyncio.gather(history_task, profile_task)
         context_str = f"用户画像：{user_profile}\n会话历史：{history}"
 
         # 3. 意图识别
