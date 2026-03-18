@@ -31,9 +31,10 @@ const App = () => {
     }
   };
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (id) => {
+    const targetSessionId = id || sessionId;
     try {
-      const response = await fetch(`/api/chat/history/${sessionId}`);
+      const response = await fetch(`/api/chat/history/${targetSessionId}`);
       const data = await response.json();
       if (data.history) {
         setMessages(data.history.map(m => ({
@@ -50,9 +51,10 @@ const App = () => {
     }
   };
 
-  const fetchAnchors = async () => {
+  const fetchAnchors = async (id) => {
+    const targetSessionId = id || sessionId;
     try {
-      const response = await fetch(`/api/chat/anchors/${sessionId}`);
+      const response = await fetch(`/api/chat/anchors/${targetSessionId}`);
       const data = await response.json();
       if (data.anchors) {
         setAnchors(data.anchors);
@@ -63,6 +65,14 @@ const App = () => {
       console.error("Failed to fetch anchors:", err);
     }
   };
+
+  useEffect(() => {
+    localStorage.setItem('telecom_user_id', userId);
+    localStorage.setItem(`telecom_session_id_${userId}`, sessionId);
+    fetchHistory(sessionId);
+    fetchAnchors(sessionId);
+    fetchUserProfile();
+  }, [sessionId, userId]);
 
   useEffect(() => {
     if (scrollRef.current) {
