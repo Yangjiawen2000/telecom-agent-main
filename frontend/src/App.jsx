@@ -19,7 +19,7 @@ const App = () => {
 
   const fetchHistory = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/chat/history/${sessionId}`);
+      const response = await fetch(`/api/chat/history/${sessionId}`);
       const data = await response.json();
       if (data.history) {
         setMessages(data.history.map(m => ({
@@ -36,7 +36,7 @@ const App = () => {
 
   const fetchAnchors = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/chat/anchors/${sessionId}`);
+      const response = await fetch(`/api/chat/anchors/${sessionId}`);
       const data = await response.json();
       if (data.anchors) {
         setAnchors(data.anchors);
@@ -62,7 +62,7 @@ const App = () => {
     setStatus('正在加载上下文与识别意图...');
 
     try {
-      const response = await fetch('http://localhost:8000/chat/message', {
+      const response = await fetch('/api/chat/message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -79,7 +79,7 @@ const App = () => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let aiMessage = { role: 'assistant', content: '', intent: '', type: 'text' };
-      
+
       setMessages(prev => [...prev, aiMessage]);
 
       while (true) {
@@ -92,7 +92,7 @@ const App = () => {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6));
-            
+
             if (data.type === 'thinking') {
               setStatus(data.content);
             } else if (data.type === 'token') {
@@ -123,7 +123,7 @@ const App = () => {
                 return newMsgs;
               });
             } else if (data.type === 'error') {
-               setStatus(`错误: ${data.content}`);
+              setStatus(`错误: ${data.content}`);
             }
           }
         }
@@ -136,14 +136,14 @@ const App = () => {
   const startNewChat = async () => {
     try {
       // 1. 调用后端删除接口
-      await fetch(`http://localhost:8000/chat/session/${sessionId}?user_id=user_01`, {
+      await fetch(`/api/chat/session/${sessionId}?user_id=user_01`, {
         method: 'DELETE'
       });
-      
+
       // 2. 生成并设置新的 Session ID
       const newSessionId = `session_${Math.random().toString(36).substr(2, 9)}`;
       setSessionId(newSessionId);
-      
+
       // 3. 重置前端状态
       setMessages([]);
       setAnchors([]);
@@ -164,7 +164,7 @@ const App = () => {
             <span className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></span>
             上下文记忆
           </div>
-          <button 
+          <button
             onClick={startNewChat}
             title="开启新对话"
             className="p-1.5 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white"
@@ -185,8 +185,8 @@ const App = () => {
           )}
         </div>
         <div className="mt-4 pt-4 border-t border-slate-700">
-           <p className="text-xs text-slate-500 mb-1">Session ID:</p>
-           <p className="text-[10px] font-mono break-all opacity-60">{sessionId}</p>
+          <p className="text-xs text-slate-500 mb-1">Session ID:</p>
+          <p className="text-[10px] font-mono break-all opacity-60">{sessionId}</p>
         </div>
       </div>
 
@@ -215,18 +215,17 @@ const App = () => {
                     {msg.intent}
                   </span>
                 )}
-                <div className={`p-4 rounded-2xl shadow-sm border ${
-                  msg.role === 'user' 
-                    ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-none border-blue-500' 
+                <div className={`p-4 rounded-2xl shadow-sm border ${msg.role === 'user'
+                    ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-none border-blue-500'
                     : 'bg-white text-gray-800 rounded-tl-none border-gray-100'
-                }`}>
+                  }`}>
                   <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                  
+
                   {msg.type === 'card' && msg.cardData && (
                     <div className="mt-4 grid grid-cols-1 gap-3">
                       {msg.cardData.map((choice, idx) => (
-                        <button 
-                          key={idx} 
+                        <button
+                          key={idx}
                           onClick={() => sendMessage(choice)}
                           className="bg-blue-50 border border-blue-100 p-3 rounded-xl hover:bg-blue-100 transition-all text-left text-sm font-medium text-blue-700 flex justify-between items-center group"
                         >
@@ -241,17 +240,17 @@ const App = () => {
             </div>
           ))}
           {messages.length === 0 && (
-             <div className="h-full flex flex-col items-center justify-center text-gray-300 space-y-4">
-                <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center border-4 border-dashed border-gray-100">
-                   <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-                </div>
-                <p className="font-medium">您好！我是您的智慧电信助手，请问有什么可以帮您？</p>
-                <div className="flex gap-2">
-                   <button onClick={() => sendMessage('推荐个套餐')} className="px-3 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all">套餐推荐</button>
-                   <button onClick={() => sendMessage('我想办宽带')} className="px-3 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all">办理业务</button>
-                   <button onClick={() => sendMessage('查询上月账单')} className="px-3 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all">查账单</button>
-                </div>
-             </div>
+            <div className="h-full flex flex-col items-center justify-center text-gray-300 space-y-4">
+              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center border-4 border-dashed border-gray-100">
+                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+              </div>
+              <p className="font-medium">您好！我是您的智慧电信助手，请问有什么可以帮您？</p>
+              <div className="flex gap-2">
+                <button onClick={() => sendMessage('推荐个套餐')} className="px-3 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all">套餐推荐</button>
+                <button onClick={() => sendMessage('我想办宽带')} className="px-3 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all">办理业务</button>
+                <button onClick={() => sendMessage('查询上月账单')} className="px-3 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all">查账单</button>
+              </div>
+            </div>
           )}
         </div>
 
@@ -274,13 +273,14 @@ const App = () => {
             </button>
           </div>
           <p className="text-[10px] text-center text-gray-400 mt-2">
-             输入“推荐办卡并查账单”体验复合意图处理
+            输入“推荐办卡并查账单”体验复合意图处理
           </p>
         </div>
       </div>
-      
+
       {/* CSS Animations */}
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideInUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
