@@ -19,12 +19,15 @@ const App = () => {
     { id: 'user_03', name: '王同学 (广州)' }
   ];
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = async (id) => {
+    const targetUserId = id || userId;
     try {
-      const response = await fetch(`/api/chat/user_context/${userId}`);
+      const response = await fetch(`/api/chat/user_context/${targetUserId}`);
       const data = await response.json();
       if (data.profile) {
         setUserProfile(data.profile);
+      } else {
+        setUserProfile('');
       }
     } catch (err) {
       console.error("Failed to fetch user profile:", err);
