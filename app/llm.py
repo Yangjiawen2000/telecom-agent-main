@@ -1,0 +1,203 @@
+import httpx
+import json
+import asyncio
+import logging
+from typing import AsyncGenerator, List, Dict, Any, Union, Optional
+from tenacity import retry, stop_after_attempt, wait_exponential
+from app.config import settings
+import time
+
+logger = logging.getLogger(__name__)
+
+class LLMClient:
+    def __init__(self):
+        self.api_key = settings.KIMI_API_KEY
+        self.base_url = settings.KIMI_BASE_URL
+        self.provider = settings.LLM_PROVIDER
+        
+        # Model mapping based on provider
+        self.model_map = {
+            "kimi": settings.KIMI_MODEL,
+            "qwen": settings.QWEN_MODEL
+        }
+    
+    def _get_provider_params(self, provider: str) -> Dict[str, Any]:
+        if provider == "qwen":
+            return {
+                "api_key": settings.QWEN_API_KEY,
+                "base_url": settings.QWEN_BASE_URL,
+                "model": settings.QWEN_MODEL
+            }
+        else:
+            return {
+                "api_key": settings.KIMI_API_KEY,
+                "base_url": settings.KIMI_BASE_URL,
+                "model": settings.KIMI_MODEL
+            }
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        reraise=True
+    )
+    async def chat(self, 
+                   messages: List[Dict[str, str]], 
+                   stream: bool = False, 
+                   temperature: float = 1.0) -> Union[str, AsyncGenerator[str, None]]:
+        
+        providers = [self.provider]
+        # 如果当前是 kimi，把 qwen 作为备选
+        if self.provider == "kimi":
+            providers.append("qwen")
+        
+        last_error = None
+        for p in providers:
+            params = self._get_provider_params(p)
+            # For kimi-k2.5, temperature must be 1.0
+            final_temp = 1.0 if "kimi-k2.5" in params["model"] else temperature
+            
+            payload = {
+                "model": params["model"],
+                "messages": messages,
+                "stream": stream,
+                "temperature": final_temp
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {params['api_key']}",
+                "Content-Type": "application/json"
+            }
+
+            try:
+                if not stream:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.post(
+                            f"{params['base_url']}/chat/completions",
+                            headers=headers,
+                            json=payload
+                        )
+                        # 如果触发 429 且有备选供应商，则尝试下一个
+                        if response.status_code == 429 and p != providers[-1]:
+                            logger.warning(f"Provider {p} rate limited (429). Falling back to {providers[providers.index(p)+1]}")
+                            continue
+                            
+                        response.raise_for_status()
+                        result = response.json()
+                        content = result["choices"][0]["message"]["content"]
+                        return content
+                else:
+                    return self._stream_chat(headers, payload, params['base_url'], providers, p)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and p != providers[-1]:
+                    logger.warning(f"Provider {p} rate limited (429). Falling back to {providers[providers.index(p)+1]}")
+                    continue
+                last_error = e
+                break
+            except Exception as e:
+                logger.error(f"LLM call error with {p}: {e}")
+                if p != providers[-1]:
+                    continue
+                last_error = e
+                break
+        
+        if last_error is not None:
+            raise last_error
+        return "Service temporarily unavailable."
+
+    async def _stream_chat(self, headers: dict, payload: dict, base_url: str, providers: list, current_p: str) -> AsyncGenerator[str, None]:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/chat/completions",
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    if response.status_code == 429 and current_p != providers[-1]:
+                         # 流式 fallback 较复杂，此处采用简单重试备选方案（非理想，但能工作）
+                         next_p = providers[providers.index(current_p)+1]
+                         logger.warning(f"Stream: Provider {current_p} rate limited. Falling back to {next_p}")
+                         params = self._get_provider_params(next_p)
+                         # 递归调用 chat 重新开启非流式或新的流式（这里实际上应该重构逻辑，暂保持简单）
+                         # 为了不破坏 AsyncGenerator 结构，我们直接返回新的生成器循环
+                         new_headers = {"Authorization": f"Bearer {params['api_key']}", "Content-Type": "application/json"}
+                         new_payload = payload.copy()
+                         new_payload["model"] = params["model"]
+                         # 如果是 kimi-k2.5，强制 temp 1.0
+                         if "kimi-k2.5" in params["model"]:
+                             new_payload["temperature"] = 1.0
+                         
+                         # 这里是个 tricky 的地方，我们需要在 outer scope 处理
+                         # 但暂且尝试在此直接 yield from 新的 stream
+                         async for token in self._stream_chat_raw(new_headers, new_payload, params['base_url']):
+                             yield token
+                         return
+
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                chunk = data["choices"][0]["delta"].get("content", "")
+                                if chunk and isinstance(chunk, str):
+                                    yield chunk
+                            except Exception:
+                                continue
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            raise
+
+    async def _stream_chat_raw(self, headers: dict, payload: dict, base_url: str) -> AsyncGenerator[str, None]:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream("POST", f"{base_url}/chat/completions", headers=headers, json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]": break
+                        try:
+                            data = json.loads(data_str)
+                            yield data["choices"][0]["delta"].get("content", "")
+                        except: continue
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
+    async def embed(self, text: str) -> List[float]:
+        """使用 DashScope (Qwen) 进行向量化"""
+        payload = {
+            "model": settings.EMBEDDING_MODEL,
+            "input": text,
+            "dimensions": 1024  # v3/v4 均支持定制维度
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {settings.QWEN_API_KEY}",
+            "Content-Type": "application/json"
+        }
+            
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            # 使用 DashScope 的 OpenAI 兼容接口
+            response = await client.post(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result["data"][0]["embedding"]
+
+client = LLMClient()
+
+async def chat(messages: List[Dict[str, str]], 
+             stream: bool = False, 
+             temperature: float = 1.0):
+    return await client.chat(messages, stream, temperature)
+
+async def embed(text: str):
+    return await client.embed(text)
