@@ -18,9 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(chat.router, tags=["chat"])
+app.include_router(chat.router, prefix="/api", tags=["chat"])
 
-@app.get("/")
+@app.get("/api")
 async def root():
     return {"message": "Welcome to Telecom Agent API"}
 
