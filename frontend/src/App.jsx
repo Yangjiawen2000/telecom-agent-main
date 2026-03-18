@@ -71,6 +71,14 @@ const App = () => {
   }, [messages, status]);
 
   const handleUserChange = (newUserId) => {
+    if (newUserId === userId) return;
+
+    // 立即清理当前 UI 状态，避免看到上一个用户的数据
+    setMessages([]);
+    setAnchors([]);
+    setUserProfile('');
+    setStatus('正在切换用户...');
+
     setUserId(newUserId);
     const savedSession = localStorage.getItem(`telecom_session_id_${newUserId}`);
     if (savedSession) {
@@ -79,6 +87,8 @@ const App = () => {
       const newSession = `session_${Math.random().toString(36).substr(2, 9)}`;
       setSessionId(newSession);
     }
+
+    setTimeout(() => setStatus(''), 1000);
   };
 
   const sendMessage = async (textOverride) => {
