@@ -169,22 +169,35 @@ async def get_user_context(user_id: str):
     profile = await ltm.get_user_context(user_id)
     return {"user_id": user_id, "profile": profile}
 
+async def safe_close(client):
+    try:
+        if hasattr(client, "aclose"):
+            await client.aclose()
+        elif hasattr(client, "close"):
+            await client.close()
+    except:
+        pass
+
 @router.get("/chat/history/{session_id}")
 async def get_chat_history(session_id: str):
     redis_client = get_redis_client()
-    stm = ShortTermMemory(session_id, redis_client)
-    history = await stm.get_history()
-    await redis_client.aclose()
-    return {"session_id": session_id, "history": history}
+    try:
+        stm = ShortTermMemory(session_id, redis_client)
+        history = await stm.get_history()
+        logger.info(f"Retrieved {len(history)} messages for session {session_id}")
+        return {"session_id": session_id, "history": history}
+    finally:
+        await safe_close(redis_client)
 
 @router.get("/chat/anchors/{session_id}")
 async def get_anchors(session_id: str):
     redis_client = get_redis_client()
-    stm = ShortTermMemory(session_id, redis_client)
-    anchors = await stm.get_anchors()
-    await redis_client.aclose()
-    # 格式化输出，只保留内容
-    return {"session_id": session_id, "anchors": [a["content"][:30] + "..." if len(a["content"]) > 30 else a["content"] for a in anchors]}
+    try:
+        stm = ShortTermMemory(session_id, redis_client)
+        anchors = await stm.get_anchors()
+        return {"session_id": session_id, "anchors": [a["content"][:30] + "..." if len(a["content"]) > 30 else a["content"] for a in anchors]}
+    finally:
+        await safe_close(redis_client)
 
 @router.delete("/chat/session/{session_id}")
 async def clear_session(session_id: str, user_id: str):
