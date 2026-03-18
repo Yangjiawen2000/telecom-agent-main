@@ -15,6 +15,7 @@ from app.tools.init_tools import register_all_tools
 from app.config import settings
 
 import redis.asyncio as redis
+from upstash_redis.asyncio import Redis as UpstashRedis
 from app.config import settings
 
 router = APIRouter()
@@ -22,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 # 获取 Redis 客户端的辅助函数
 def get_redis_client():
+    if settings.UPSTASH_REDIS_REST_URL and settings.UPSTASH_REDIS_REST_TOKEN:
+        return UpstashRedis(
+            url=settings.UPSTASH_REDIS_REST_URL, 
+            token=settings.UPSTASH_REDIS_REST_TOKEN
+        )
     return redis.Redis(
         host=settings.REDIS_HOST, 
         port=settings.REDIS_PORT, 

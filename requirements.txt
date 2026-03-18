@@ -4,6 +4,7 @@ langgraph
 langchain
 langchain-openai
 redis
+upstash-redis
 pymilvus
 psycopg2-binary
 pydantic-settings

@@ -14,13 +14,18 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
 
+
     # Redis Settings
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+    UPSTASH_REDIS_REST_URL: Optional[str] = None
+    UPSTASH_REDIS_REST_TOKEN: Optional[str] = None
 
     # Milvus Settings
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
+    MILVUS_URI: Optional[str] = None
+    MILVUS_TOKEN: Optional[str] = None
 
     # LLM Settings
     LLM_PROVIDER: str = "kimi"  # kimi or qwen

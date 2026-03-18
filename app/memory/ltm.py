@@ -24,12 +24,20 @@ class LongTermMemory:
         
     def _connect(self):
         if not connections.has_connection("default"):
-            connections.connect(
-                alias="default",
-                host=self.host,
-                port=self.port
-            )
-            logger.info(f"Connected to Milvus at {self.host}:{self.port}")
+            if settings.MILVUS_URI and settings.MILVUS_TOKEN:
+                connections.connect(
+                    alias="default",
+                    uri=settings.MILVUS_URI,
+                    token=settings.MILVUS_TOKEN
+                )
+                logger.info(f"Connected to Zilliz Cloud at {settings.MILVUS_URI}")
+            else:
+                connections.connect(
+                    alias="default",
+                    host=self.host,
+                    port=self.port
+                )
+                logger.info(f"Connected to Milvus at {self.host}:{self.port}")
 
     async def init_collections(self):
         """初始化知识库和用户画像 Collection"""
