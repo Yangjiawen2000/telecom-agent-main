@@ -164,7 +164,7 @@ async def event_generator(request: ChatRequest, background_tasks: BackgroundTask
     finally:
         await redis_client.aclose()
 
-@router.get("/api/chat/user_context/{user_id}")
+@router.get("/chat/user_context/{user_id}")
 async def get_user_context(user_id: str):
     profile = await ltm.get_user_context(user_id)
     return {"user_id": user_id, "profile": profile}
