@@ -5,17 +5,31 @@ const App = () => {
   const [input, setInput] = useState('');
   const [status, setStatus] = useState('');
   const [anchors, setAnchors] = useState([]);
+  const [userId, setUserId] = useState(localStorage.getItem('telecom_user_id') || 'user_01');
+  const [userProfile, setUserProfile] = useState('');
   const [sessionId, setSessionId] = useState(
-    localStorage.getItem('telecom_session_id') || `session_${Math.random().toString(36).substr(2, 9)}`
+    localStorage.getItem(`telecom_session_id_${userId}`) || `session_${Math.random().toString(36).substr(2, 9)}`
   );
 
   const scrollRef = useRef(null);
 
-  useEffect(() => {
-    localStorage.setItem('telecom_session_id', sessionId);
-    fetchHistory();
-    fetchAnchors();
-  }, [sessionId]);
+  const users = [
+    { id: 'user_01', name: '张经理 (北京)' },
+    { id: 'user_02', name: '李大姐 (上海)' },
+    { id: 'user_03', name: '王同学 (广州)' }
+  ];
+
+  const fetchUserProfile = async () => {
+    try {
+      const response = await fetch(`/api/chat/user_context/${userId}`);
+      const data = await response.json();
+      if (data.profile) {
+        setUserProfile(data.profile);
+      }
+    } catch (err) {
+      console.error("Failed to fetch user profile:", err);
+    }
+  };
 
   const fetchHistory = async () => {
     try {
@@ -28,6 +42,8 @@ const App = () => {
           intent: m.metadata?.intent || '',
           type: 'text'
         })));
+      } else {
+        setMessages([]);
       }
     } catch (err) {
       console.error("Failed to fetch history:", err);
@@ -40,6 +56,8 @@ const App = () => {
       const data = await response.json();
       if (data.anchors) {
         setAnchors(data.anchors);
+      } else {
+        setAnchors([]);
       }
     } catch (err) {
       console.error("Failed to fetch anchors:", err);
@@ -51,6 +69,17 @@ const App = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, status]);
+
+  const handleUserChange = (newUserId) => {
+    setUserId(newUserId);
+    const savedSession = localStorage.getItem(`telecom_session_id_${newUserId}`);
+    if (savedSession) {
+      setSessionId(savedSession);
+    } else {
+      const newSession = `session_${Math.random().toString(36).substr(2, 9)}`;
+      setSessionId(newSession);
+    }
+  };
 
   const sendMessage = async (textOverride) => {
     const messageText = textOverride || input;
@@ -69,7 +98,7 @@ const App = () => {
         },
         body: JSON.stringify({
           session_id: sessionId,
-          user_id: 'user_01', // 假定用户 ID
+          user_id: userId,
           message: messageText,
         }),
       });
@@ -111,10 +140,10 @@ const App = () => {
                 return newMsgs;
               });
               setStatus('');
-              // Update anchors
+              // Update anchors and profile
               fetchAnchors();
+              fetchUserProfile();
             } else if (data.type === 'card') {
-              // Mocking card behavior if backend returns it
               aiMessage.type = 'card';
               aiMessage.cardData = data.content;
               setMessages(prev => {
@@ -135,18 +164,16 @@ const App = () => {
 
   const startNewChat = async () => {
     try {
-      // 1. 调用后端删除接口
-      await fetch(`/api/chat/session/${sessionId}?user_id=user_01`, {
+      await fetch(`/api/chat/session/${sessionId}?user_id=${userId}`, {
         method: 'DELETE'
       });
 
-      // 2. 生成并设置新的 Session ID
       const newSessionId = `session_${Math.random().toString(36).substr(2, 9)}`;
       setSessionId(newSessionId);
 
-      // 3. 重置前端状态
       setMessages([]);
       setAnchors([]);
+      setUserProfile('');
       setStatus('新会话已开启');
       setTimeout(() => setStatus(''), 2000);
     } catch (err) {
@@ -158,7 +185,25 @@ const App = () => {
   return (
     <div className="flex h-screen bg-gray-100 text-gray-900 overflow-hidden font-sans">
       {/* Sidebar - Context Panel */}
-      <div className="w-64 bg-slate-800 text-white flex flex-col p-4 shadow-xl border-r border-slate-700">
+      <div className="w-72 bg-slate-800 text-white flex flex-col p-4 shadow-xl border-r border-slate-700">
+        {/* User Selector */}
+        <div className="mb-8">
+          <label className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2 block">当前模拟用户</label>
+          <div className="grid grid-cols-1 gap-2">
+            {users.map(u => (
+              <button
+                key={u.id}
+                onClick={() => handleUserChange(u.id)}
+                className={`flex items-center gap-3 p-2.5 rounded-xl transition-all text-sm ${userId === u.id ? 'bg-blue-600 shadow-lg shadow-blue-500/20 text-white' : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                  }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${userId === u.id ? 'bg-white animate-pulse' : 'bg-slate-500'}`}></div>
+                {u.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <h2 className="text-xl font-bold mb-6 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></span>
@@ -174,15 +219,36 @@ const App = () => {
             </svg>
           </button>
         </h2>
-        <div className="flex-1 space-y-3 overflow-y-auto">
-          {anchors.map((anchor, i) => (
-            <div key={i} className="bg-slate-700/50 p-3 rounded-lg border border-slate-600 hover:bg-slate-700 transition-all cursor-default text-sm">
-              <span className="text-blue-400 font-mono mr-2">#</span> {anchor}
+
+        <div className="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+          {/* User Profile / Long-Term Memory */}
+          <div>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+              长期画像 (LTM)
+            </h3>
+            <div className="bg-slate-700/40 p-3 rounded-lg border border-slate-600 text-xs leading-relaxed text-slate-300">
+              {userProfile || '尚无用户画像数据...'}
             </div>
-          ))}
-          {anchors.length === 0 && (
-            <div className="text-slate-400 text-sm italic">暂无记忆锚点</div>
-          )}
+          </div>
+
+          {/* Session Anchors */}
+          <div>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+              会话锚点 (STM)
+            </h3>
+            <div className="space-y-2">
+              {anchors.map((anchor, i) => (
+                <div key={i} className="bg-slate-700/50 p-3 rounded-lg border border-slate-600 hover:bg-slate-700 transition-all cursor-default text-sm">
+                  <span className="text-blue-400 font-mono mr-2">#</span> {anchor}
+                </div>
+              ))}
+              {anchors.length === 0 && (
+                <div className="text-slate-400 text-xs italic">暂无会话记忆锚点</div>
+              )}
+            </div>
+          </div>
         </div>
         <div className="mt-4 pt-4 border-t border-slate-700">
           <p className="text-xs text-slate-500 mb-1">Session ID:</p>
@@ -216,8 +282,8 @@ const App = () => {
                   </span>
                 )}
                 <div className={`p-4 rounded-2xl shadow-sm border ${msg.role === 'user'
-                    ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-none border-blue-500'
-                    : 'bg-white text-gray-800 rounded-tl-none border-gray-100'
+                  ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-tr-none border-blue-500'
+                  : 'bg-white text-gray-800 rounded-tl-none border-gray-100'
                   }`}>
                   <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
 
